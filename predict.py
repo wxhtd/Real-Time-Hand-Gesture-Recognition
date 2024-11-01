@@ -5,18 +5,25 @@ import pandas as pd
 from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 from sklearn.preprocessing import MinMaxScaler
+from operator import itemgetter
+import logging
+
 
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
 root_path = config["test_data_root_directory"]
-gestures = [gesture.strip() for gesture in config["gestures"].split(",")]
+static_gestures = [gesture.strip() for gesture in config["static_gestures"].split(",")]
+dynamic_gestures = [gesture.strip() for gesture in config["dynamic_gestures"].split(",")]
+confidence_threshold = float(config["confidence_threshold"])
+
+# Configure logging
+logging.basicConfig(filename='output.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
 
 # Load the trained model
-loaded_model1 = load_model('gesture_3dcnn_model.h5')
-loaded_model2 = load_model('gesture_3dcnn_model_normal_mask_globalMaxPool_maskPadding_20epochs.h5')
-
-import pandas as pd
+loaded_model_dynamics = load_model('gesture_3dcnn_normal_globalMaxPool_maskPadding_20epochs.h5')
+loaded_model_static = load_model('gesture_2dcnn_actibysum_normal_globalMaxPool_flatten_20epochs.h5')
 
 def preprocess_sensor_data(input_file_path, output_file_path):
     # if output file already exist, do not create duplicate
@@ -57,30 +64,64 @@ def preprocess_sensor_data(input_file_path, output_file_path):
     # Save the processed data to a CSV file without a header row
     processed_df.to_csv(output_file_path, index=False, header=False)
 
-    print(f"Processed data saved to: {output_file_path}")
+    logging.info(f"Processed data saved to: {output_file_path}")
 
 
 # Load new sensor data (replace with your actual file or data source)
-def load_new_data(file_path):
+def load_new_data(file_path, is_static=False):
     data = pd.read_csv(file_path, header=None)
     zone_distances = data.iloc[:, 2:].values  # Extract zone distances
-
     # Reshape the data to (frames, 8, 8, 1)
     num_frames = len(zone_distances)
     reshaped_data = zone_distances.reshape(num_frames, 8, 8, 1)
+    
+    if is_static:
+        return reshaped_data
+    else:
+        # Pad the sequence to match the max frame length (e.g., 175)
+        max_frames = 175  # Replace with the max frame length used during training
+        padded_data = pad_sequences([reshaped_data], maxlen=max_frames, padding='post', dtype='float32')
 
-    # Pad the sequence to match the max frame length (e.g., 175)
-    max_frames = 175  # Replace with the max frame length used during training
-    padded_data = pad_sequences([reshaped_data], maxlen=max_frames, padding='post', dtype='float32')
+        return padded_data
 
-    return padded_data
+# logging.info('Test dynamics gesture')
+# for gesture in dynamic_gestures:
+#     logging.info(f'Target gesture: {gesture}')
+#     modelAccuracy = 0
+#     totalCount = 0
+#     sensor_data_folder = f'{root_path}\\test data\\{gesture}\\'
+#     for filename in os.listdir(sensor_data_folder):
+#         if filename.endswith('.csv') and not filename.endswith('_processed.csv'):
+#             totalCount += 1
+#             file_path = os.path.join(sensor_data_folder, filename)
+#             output_file = file_path.replace('.csv', '_processed.csv')
+#             preprocess_sensor_data(file_path, output_file)
+            
+#             new_data = load_new_data(output_file, is_static=False)
 
-for gesture in gestures:
-    print(f'Target gesture: {gesture}')
-    model1Accuracy = 0
-    model2Accuracy = 0
+#             # Normalize the data using the same scaler from training
+#             scaler = MinMaxScaler()
+#             new_data = scaler.fit_transform(new_data.reshape(-1, 64)).reshape(new_data.shape)
+
+#             # Perform the prediction
+#             prediction = loaded_model_dynamics.predict(new_data)
+
+#             # Get the predicted label
+#             predicted_label = np.argmax(prediction)
+            
+#             logging.info(f'Predicted Gesture with model: {dynamic_gestures[predicted_label]}')
+#             if gesture == dynamic_gestures[predicted_label]:
+#                 modelAccuracy +=1
+
+#     logging.info(f'Model accuracy for {gesture}: {modelAccuracy/totalCount}')
+
+
+logging.info('Test static gesture')
+for gesture in static_gestures:
+    logging.info(f'Target gesture: {gesture}')
+    modelAccuracy = 0
     totalCount = 0
-    sensor_data_folder = f'{root_path}\\new test 20241031\\{gesture}\\'
+    sensor_data_folder = f'{root_path}\\test data\\{gesture}\\'
     for filename in os.listdir(sensor_data_folder):
         if filename.endswith('.csv') and not filename.endswith('_processed.csv'):
             totalCount += 1
@@ -88,25 +129,40 @@ for gesture in gestures:
             output_file = file_path.replace('.csv', '_processed.csv')
             preprocess_sensor_data(file_path, output_file)
             
-            new_data = load_new_data(output_file)
+            new_data = load_new_data(output_file, is_static=True)
 
             # Normalize the data using the same scaler from training
             scaler = MinMaxScaler()
             new_data = scaler.fit_transform(new_data.reshape(-1, 64)).reshape(new_data.shape)
 
-            # Perform the prediction
-            prediction1 = loaded_model1.predict(new_data)
-            prediction2 = loaded_model2.predict(new_data)
+            gesture_found = {}
+            for frame in new_data:
+                frame = frame.reshape(1, 8, 8, 1)  # Reshape to (1, 8, 8, 1) for the model
+                prediction = loaded_model_static.predict(frame)
+                
+                # Get the predicted label for the frame
+                predicted_label = np.argmax(prediction)
+                confidence = prediction[0][predicted_label]
 
-            # Get the predicted label
-            predicted_label1 = np.argmax(prediction1)
-            predicted_label2 = np.argmax(prediction2)
-            
-            print(f'Predicted Gesture with model 1: {gestures[predicted_label1]}')
-            print(f'Predicted Gesture with model 2: {gestures[predicted_label2]}')
-            if gesture == gestures[predicted_label1]:
-                model1Accuracy +=1
-            if gesture == gestures[predicted_label2]:
-                model2Accuracy +=1
-    print(f'Model 1 accuracy for {gesture}: {model1Accuracy/totalCount}')
-    print(f'Model 2 accuracy for {gesture}: {model2Accuracy/totalCount}')
+                # Check if the confidence exceeds the threshold
+                if confidence >= confidence_threshold:
+                    # Map predicted label to gesture name
+                    predicted_gesture = static_gestures[predicted_label]
+                    if predicted_gesture not in gesture_found:
+                        gesture_found[predicted_gesture] = 1
+                    else:
+                        gesture_found[predicted_gesture] += 1
+                    # logging.info(f'Match found for static gesture: {predicted_gesture} in file {filename}')
+            if len(gesture_found) == 0:
+                logging.info(f"No match gesture found in file {filename}")
+            else:
+                total_frames = sum(gesture_found.values())
+                sorted_gestures = sorted(gesture_found.items(), key=lambda item: item[1], reverse=True)
+                most_likely_gesture = max(gesture_found.items(), key=itemgetter(1))
+                if most_likely_gesture[0] == gesture:
+                    modelAccuracy += 1
+                for g, count in sorted_gestures:
+                    chance = (count / total_frames) * 100
+                    logging.info(f"Gesture: {g}, Matched Frames: {count}, Chance: {chance:.2f}%")
+
+    logging.info(f'Model accuracy for {gesture}: {modelAccuracy/totalCount}')

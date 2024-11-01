@@ -51,7 +51,7 @@ with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
 root_path = config["test_data_root_directory"]
-types = [gesture.strip() for gesture in config["gestures"].split(",")]
+types = [gesture.strip() for gesture in config["static_gestures"].split(",")].extend([gesture.strip() for gesture in config["dynamic_gestures"].split(",")])
 
 for type in types:
     # Define the folder containing the .csv files and the output file path
