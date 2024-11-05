@@ -239,14 +239,13 @@ def periodic_update():
         
         if gesture_name:
             # Display new gesture prediction
-            probabilities = sorted(probability_array, key=lambda x: x[1], reverse=True)
-            update_gesture_display(gesture_name, probabilities)
+            update_gesture_display(gesture_name, probability_array)
         else:
             # Clear display if no gesture is detected
             update_gesture_display(None, [])
         
     global update_task_id
-    update_task_id = root.after(100, periodic_update)
+    update_task_id = root.after(200, periodic_update)
 
 def on_close():
     """Cleanup tasks before closing the GUI."""
@@ -260,7 +259,7 @@ def on_close():
     root.destroy()
 
 # Start the periodic update
-update_task_id = root.after(100, periodic_update)
+update_task_id = root.after(200, periodic_update)
 # Bind the close event to the on_close function
 root.protocol("WM_DELETE_WINDOW", on_close)
 root.mainloop()

@@ -1,9 +1,10 @@
 {
-    "test_data_root_directory": "D:\\Repository\\CNN\\Processed Data",
+    "port": "COM3",
+    "test_data_root_directory": "C:\\Users\\yecl3\\Documents\\GitHub\\3D CNN_to fix\\DataCollectionEVK_complete",
     "static_gestures": "thumbs_up, thumbs_down",
     "dynamic_gestures": "palm_left, palm_right, palm_up, palm_down, palm_forward, palm_backward",
     "confidence_threshold": "0.8",
-    "motion_detection_threshold": "70",
+    "motion_detection_threshold": "100",
     "prediction_frame_number": "20",
     "prediction_delay": "1.5"
 }
