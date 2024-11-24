@@ -99,6 +99,85 @@ def update_zone_data():
             print(f"Data: {zone_entries}")
             print(f"Error details: {e}")
 
+def update_zone_data_builtin():
+    global last_prediction_time
+
+    latest_data = controller.get_latest_data()
+    if latest_data:
+        result = [a.strip() for a in latest_data.split(' ')]
+        if len(result) > 1:
+            gesture_name = "idle"
+            if result[0] == "STATIC":
+                if result[1] == '0':
+                    gesture_name = "idle"
+                elif result[1] == '21':
+                    gesture_name = "thumbs_up"
+                elif result[1] == '25':
+                    gesture_name = "thumbs_down"
+                elif result[1] == '3':
+                    gesture_name = "palm_left"
+                elif result[1] == '4':
+                    gesture_name = "palm_right"
+                elif result[1] == '5':
+                    gesture_name = "palm_down"
+            elif result[0] == "DYNAMIC":
+                if result[1] == '0':
+                    gesture_name = "idle"
+                elif result[1] == '1':
+                    gesture_name = "palm_left"
+                elif result[1] == '2':
+                    gesture_name = "palm_right"
+                elif result[1] == '3':
+                    gesture_name = "palm_down"
+                elif result[1] == '4':
+                    gesture_name = "palm_up"
+                elif result[1] == '5':
+                    gesture_name = "palm_forward"
+                elif result[1] == '6':
+                    gesture_name = "palm_backward"
+                elif result[1] == '7':
+                    gesture_name = "palm_double_tap"
+            elif result[0] == "Gesture":
+                if result[1] == '':
+                    gesture_name = "idle"
+                elif result[1] == 'LEFT':
+                    gesture_name = "palm_left"
+                elif result[1] == 'RIGHT':
+                    gesture_name = "palm_right"
+                elif result[1] == 'DOWN':
+                    gesture_name = "palm_down"
+                elif result[1] == 'UP':
+                    gesture_name = "palm_up"
+                elif result[1] == 'FORWARD':
+                    gesture_name = "palm_forward"
+                elif result[1] == 'BACKWARD':
+                    gesture_name = "palm_backward"
+                elif result[1] == 'DOUBLE':
+                    gesture_name = "palm_double_tap"
+            if gesture_name != 'idle':
+                last_prediction_time = time.time()
+                print(f'result:{result} | pic:{gesture_name}')
+                # Display the predicted gesture image
+                image_path = f".\\src\\{gesture_name}.png"  # Assuming images are named as 'gesture_name.png'
+                gesture_image = Image.open(image_path).resize((gesture_display_width, gesture_display_height))
+                gesture_photo = ImageTk.PhotoImage(gesture_image)
+                gesture_display.config(image=gesture_photo)
+                gesture_display.image = gesture_photo  # Keep reference to avoid garbage collection
+                return
+            # # Display the probability for each gesture
+            # probability_text = "\n".join([f"{gesture}: {prob:.2%}" for gesture, prob in probabilities])
+            # probability_display.config(state="normal")
+            # probability_display.delete(1.0, tk.END)
+            # probability_display.insert(tk.END, probability_text)
+            # probability_display.config(state="disabled")
+    
+    # Use the placeholder image if no gesture is detected
+    gesture_display.config(image=placeholder_photo)
+    gesture_display.image = placeholder_photo  # Keep reference to avoid garbage collection
+    probability_display.config(state="normal")
+    probability_display.delete(1.0, tk.END)
+    probability_display.config(state="disabled")
+
 # Function to update hand gesture image and probability display
 def update_gesture_display(gesture_name, probabilities):
     if gesture_name:
@@ -222,27 +301,28 @@ probability_display.pack(anchor="w",padx=5,pady=5, fill="x")
 # Update zone data periodically
 def periodic_update():
     global last_prediction_time
-
-    # if controller.reading:
-    update_zone_data() # Update zone data before scheduling the next update
-    
     # Get the current time
     current_time = time.time()
-
     # Check if 1 second has passed since the last prediction
     if current_time - last_prediction_time >= prediction_delay:
-        # Update the last prediction time
-        last_prediction_time = current_time
+    # if controller.reading:
+    #update_zone_data() # Update zone data before scheduling the next update
+        update_zone_data_builtin()
+
+    # # Check if 1 second has passed since the last prediction
+    # if current_time - last_prediction_time >= prediction_delay:
+    #     # Update the last prediction time
+    #     last_prediction_time = current_time
         
-        # Retrieve the latest gesture prediction from the controller
-        gesture_name, probability_array = controller.get_gesture_prediction()
+    #     # Retrieve the latest gesture prediction from the controller
+    #     gesture_name, probability_array = controller.get_gesture_prediction()
         
-        if gesture_name:
-            # Display new gesture prediction
-            update_gesture_display(gesture_name, probability_array)
-        else:
-            # Clear display if no gesture is detected
-            update_gesture_display(None, [])
+    #     if gesture_name:
+    #         # Display new gesture prediction
+    #         update_gesture_display(gesture_name, probability_array)
+    #     else:
+    #         # Clear display if no gesture is detected
+    #         update_gesture_display(None, [])
         
     global update_task_id
     update_task_id = root.after(200, periodic_update)

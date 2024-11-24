@@ -18,11 +18,9 @@ logging.basicConfig(filename='output.log', level=logging.INFO, format='%(asctime
 ser = None
 latest_data = None
 reading = False
-data_distance_buffer = deque(maxlen=frame_number)  # Buffer to store the distance data of last frame
-data_signal_buffer = deque(maxlen=frame_number)  # Buffer to store the signal data of last frame
 
 # Initialize the serial connection
-def initialize_serial(port=port, baudrate=921600, retries=3, delay=2):
+def initialize_serial(port=port, baudrate=115200, retries=3, delay=2):
     global ser
     for attempt in range(retries):
         try:
@@ -71,9 +69,8 @@ def read_from_serial():
                 data = ln.decode('utf-8').strip()
                 # Store the latest data for retrieval by GUI
                 logging.info(data)
-                if "data:" in data:
-                    latest_data = data.split("data:", 1)[1]
-                    process_data(latest_data)  # Process and store data in buffer for gesture prediction
+                if "STATIC" in data or "DYNAMIC" in data or "Gesture" in data:
+                    latest_data = data
             except UnicodeDecodeError:
                 # Fallback to binary handling if decoding fails
                 latest_data = ' '.join(f'{byte:02x}' for byte in ln)
@@ -99,39 +96,6 @@ def close_serial():
 
 def send_updated_settings(zone_mode, ranging_rate):
     pass
-
-# Function to process the data and store in buffer
-def process_data(data):
-    zones = [3000]*64
-    signals = [0]*64
-    for entry in data.split(";"):
-        zone_data = entry.split(",")
-        if len(zone_data) == 4:
-            try:
-                zone_id = int(zone_data[0])
-                distance = int(zone_data[1]) if zone_data[1] != 'X' else 3000  # Set 'X' to 3000
-                signal = int(zone_data[3]) if zone_data[3] != 'X' else 0  # Set 'X' to 3000
-                zones[zone_id] = distance
-                signals[zone_id] = signal
-            except ValueError:
-                # Skip this entry if conversion fails
-                zones[zone_id] = 3000  # Default to 3000 for invalid entries
-                signals[zone_id] = 0  # Default to 0 for invalid entries
-    if len(zones) == 64:
-        data_distance_buffer.append(zones)  # Store only complete frames
-        data_signal_buffer.append(signals)
-
-def get_gesture_prediction():
-    # Return the buffer as a list of lists, ensuring it has exactly 10 frames
-    prediction_matrix_distance = list(data_distance_buffer)
-    prediction_matrix_signal = list(data_signal_buffer)
-    # # If we have less than 10 frames, pad with 3000s for missing data
-    # while len(prediction_matrix) < frame_number:
-    #     prediction_matrix.insert(0, [3000] * 64)  # Pad with 3000 values
-    if len(prediction_matrix_distance) > 0:
-        return evaluate_gesture(prediction_matrix_distance, prediction_matrix_signal)
-        # return evaluate_gesture_both(prediction_matrix, prediction_matrix_signal)
-    return '', []
 
 if __name__ == '__main__':
     try:
