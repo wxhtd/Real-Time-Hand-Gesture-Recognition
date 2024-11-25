@@ -2,6 +2,7 @@ import flet as ft
 import controller
 import time
 import json
+import logging
 from PIL import Image
 import asyncio
 import colorsys
@@ -10,8 +11,11 @@ import colorsys
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
+# Configure logging
+logging.basicConfig(filename='output.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+
 # Prediction delay and last prediction time
-prediction_delay = float(config.get("prediction_delay", 2.0))
+prediction_delay = round(float(config.get("prediction_delay", 2.0)))
 last_prediction_time = 0
 
 # Initialize the serial connection
@@ -23,6 +27,7 @@ def main(page: ft.Page):
     page.title = "Hand Gesture Recognition"
     page.window_width = 800
     page.window_height = 600
+    page.theme_mode = "LIGHT"
 
     # Variables
     is_running = False  # Track whether updates should run
@@ -78,6 +83,7 @@ def main(page: ft.Page):
             page.update(),
         ],
     )
+    
     stop_button = ft.ElevatedButton(
         text="Stop",
         on_click=lambda e: [
@@ -91,16 +97,39 @@ def main(page: ft.Page):
     )
 
     # Hand Gesture Display
-    gesture_image_size = 160  # Increased size for hand gesture display
-    gesture_image = ft.Container(
-        bgcolor="white",
-        width=gesture_image_size,
-        height=gesture_image_size,
-        border_radius=4,
-        border=ft.border.all(1, "black"),
+    gesture_image = ft.Image(
+        src="./src/idle.png",  # Initial placeholder image
+        width=150,            # Adjust size as needed
+        height=150,
+        fit="contain"
     )
-    gesture_label = ft.Text("Gesture: None", size=16)
-    # gesture_image = ft.Image(src="./src/idle.png", width=80, height=80)
+
+    gesture_label = ft.Text(
+        value="Gesture: None",
+        size=16,
+        color="#333333"
+    )
+
+    countdown_label = ft.Text("", size=24, color="red")
+
+    test_prediction_button = ft.ElevatedButton(
+        "Simulate Gesture",
+        on_click=lambda e: asyncio.run(
+            update_gesture_display("thumbs_up")
+        ),
+    )
+
+    gesture_display_container = ft.Column(
+        [
+            ft.Text("Hand Gesture:", size=18, color="#000000"),
+            gesture_image,
+            gesture_label,
+            countdown_label,
+        ],
+        alignment="center"
+    )
+
+    
     
     # UI Components
     def create_zone_grid():
@@ -126,61 +155,63 @@ def main(page: ft.Page):
     
         # Update zone display function
     async def update_zone_data():
-        latest_data = controller.get_latest_data()
-        if latest_data:
+        data = controller.get_latest_data()
+        if data:
             try:
-                zone_entries = latest_data.split(";")
-                for entry in zone_entries:
-                    zone_entry = entry.split(",")
-                    if len(zone_entry) == 4:
-                        zone_id = int(zone_entry[0])
-                        distance = int(zone_entry[1]) if zone_entry[1] != "X" else -1
-                        if distance == -1:
-                            color = "#FFFFFF"  # White for missing data
-                        else:
-                            norm_distance = min(max(distance / 3000, 0), 1)  # Normalize distance to [0, 1]
-                            hue = norm_distance * 240 / 360  # Map distance to hue range [0, 2/3]
-                            # Adjust brightness (value): darker for mid-range
-                            brightness = 0.7 if 0.3 <= norm_distance <= 0.7 else 1.0
-                            rgb = colorsys.hsv_to_rgb(hue, 1, brightness)  # Full saturation and value
-                            color = f"#{int(rgb[0] * 255):02X}{int(rgb[1] * 255):02X}{int(rgb[2] * 255):02X}"
-
-                        # color = "#FFFFFF" if distance == -1 else f"#{int((1 - min(distance / 3000, 1)) * 255):02X}0000"
-                        row, col = divmod(zone_id, 8)
-                        zone_grid.controls[row*8+col].bgcolor = color
-                        zone_grid.controls[row*8+col].content.value = f"R:{distance}"
+                zone_data, signal_data = data
+                for zone_id, distance in enumerate(zone_data):
+                    if distance == -1:
+                        color = "#FFFFFF"  # White for missing data
+                    else:
+                        norm_distance = min(max(distance / 3000, 0), 1)  # Normalize distance to [0, 1]
+                        hue = norm_distance * 240 / 360  # Map distance to hue range [0, 2/3]
+                        # Adjust brightness (value): darker for mid-range
+                        brightness = 0.7 if 0.3 <= norm_distance <= 0.7 else 1.0
+                        rgb = colorsys.hsv_to_rgb(hue, 1, brightness)  # Full saturation and value
+                        color = f"#{int(rgb[0] * 255):02X}{int(rgb[1] * 255):02X}{int(rgb[2] * 255):02X}"
+                    # color = "#FFFFFF" if distance == -1 else f"#{int((1 - min(distance / 3000, 1)) * 255):02X}0000"
+                    row, col = divmod(zone_id, 8)
+                    zone_grid.controls[row*8+col].bgcolor = color
+                    zone_grid.controls[row*8+col].content.value = f"R:{distance}"
                 zone_grid.update()
             except Exception as e:
                 print(f"Error updating zone data: {e}")
 
     # Update hand gesture display function
-    async def update_gesture_display():
-        gesture_name, probabilities = controller.get_gesture_prediction()
+    async def update_gesture_display(gesture_name=None):
+        logging.info('try update gesture')
+        if gesture_name == None:
+            gesture_name, probabilities = controller.get_gesture_prediction()
         if gesture_name:
+            logging.info('updating gesture')
             gesture_image.src = f"./src/{gesture_name}.png"
             gesture_label.value = f"Gesture: {gesture_name}"
-        else:
+            gesture_image.update()
+            gesture_label.update()
+            page.update()
+            # Start a 3-second countdown
+            for i in range(prediction_delay, 0, -1):
+                countdown_label.value = f"Resume detection in {i}"
+                page.update()
+                time.sleep(1)  # Wait 1 second
+            # Clear the countdown and gesture label
+            logging.info('finish counting down')
+            countdown_label.value = ""
+            gesture_label.value = "Gesture: None"
+        # else:
             gesture_image.src = "./src/idle.png"
             gesture_label.value = "Gesture: None"
-        page.update()
-
-    # # Periodic update function zone_grid, gesture_image, gesture_label, page
-    # async def periodic_update(zone_grid, gesture_image, gesture_label, page):
-    #     global last_prediction_time
-    #     while True:
-    #         update_zone_data(zone_grid)
-    #         current_time = time.time()
-    #         if current_time - last_prediction_time >= prediction_delay:
-    #             last_prediction_time = current_time
-    #             update_gesture_display(page, gesture_image, gesture_label)
-    #         page.update()
-    #         await asyncio.sleep(0.2)  # 200ms delay
+            gesture_image.update()
+            gesture_label.update()
+            page.update()
+            logging.info('clear buffer')
+            controller.clear_buffer()
 
     async def run_periodic_updates():
         """Run periodic updates for zones and gestures."""
         while is_running:
             await asyncio.gather(update_zone_data(), update_gesture_display())
-            await asyncio.sleep(0.2)  # Adjust the interval as needed
+            await asyncio.sleep(0.05)  # Adjust the interval as needed
 
     def start_sampling(control):
         nonlocal is_running
@@ -241,9 +272,7 @@ def main(page: ft.Page):
                     ft.ElevatedButton("Start", on_click=start_sampling),
                     ft.ElevatedButton("Stop", on_click=stop_sampling),
                     ft.Divider(),
-                    ft.Text("Hand Gesture:", size=16),
-                    gesture_image,
-                    gesture_label,
+                    gesture_display_container,
                 ],
                 expand=False,
                 spacing=10,

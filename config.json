@@ -4,7 +4,9 @@
     "static_gestures": "thumbs_up, thumbs_down",
     "dynamic_gestures": "palm_left, palm_right, palm_up, palm_down, palm_forward, palm_backward",
     "confidence_threshold": "0.8",
-    "motion_detection_threshold": "100",
-    "prediction_frame_number": "20",
-    "prediction_delay": "1.5"
+    "motion_detection_threshold": "40",
+    "prediction_frame_number": "15",
+    "prediction_delay": "2",
+    "relative_background_distance": "200",
+    "background_distance_threshold": "600"
 }

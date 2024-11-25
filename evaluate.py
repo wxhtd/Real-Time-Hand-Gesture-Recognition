@@ -63,14 +63,16 @@ def detect_motion(data):
     Returns True if motion is detected, False otherwise.
     """
     diffs = []
-    if len(data) < frame_number:
-        return False
+    if len(data) == 1:
+        return True
     for i in range(1, len(data)):
-        diff = np.mean(np.abs(data[:,0][i] - data[:,0][i - 1]))
+        diff = np.mean(np.abs(data[i]-data[i-1]))
+        # for j in range(64):            
+        #     diff = np.mean(np.abs(data[:,j][i]-data[:,j][i-1]))
         diffs.append(diff)
     avg_motion = np.mean(diffs)
     logging.info(f'avg_motion = {avg_motion}')
-    return avg_motion > motion_detection_threshold
+    return avg_motion < motion_detection_threshold
 
 def evaluate_gesture(distances, signals):
     global test_id
@@ -78,9 +80,12 @@ def evaluate_gesture(distances, signals):
     test_id += 1
     logging.warning(f'{test_id}:{distances}')
 
+    if len(distances) < frame_number:
+        logging.info(f'Less than {frame_number} frames, skip prediction')
+        return '', []
     distances = np.array(distances)
     signals = np.array(signals)
-    is_static = not detect_motion(distances)
+    is_static = detect_motion(distances)
     print(f"Gesture Prediction: is_static = {is_static}")
 
     if is_static:
