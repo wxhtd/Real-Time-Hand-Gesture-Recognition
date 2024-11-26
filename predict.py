@@ -13,8 +13,9 @@ root_path = config["test_data_root_directory"]
 gestures = [gesture.strip() for gesture in config["gestures"].split(",")]
 
 # Load the trained model
-loaded_model1 = load_model('gesture_3dcnn_model.h5')
-loaded_model2 = load_model('gesture_3dcnn_model_normal_mask_globalMaxPool_maskPadding_20epochs.h5')
+loaded_model1 = load_model('gesture_3dcnn_model_normal_globalMaxPool_maskPadding_17epochs_best.h5')
+loaded_model2 = load_model('gesture_3dcnn_model_normal_globalMaxPool_maskPadding_15epochs.h5')
+loaded_model3 = load_model('gesture_3dcnn_model_normal_globalMaxPool_maskPadding_20epochs.h5')
 
 import pandas as pd
 
@@ -79,8 +80,9 @@ for gesture in gestures:
     print(f'Target gesture: {gesture}')
     model1Accuracy = 0
     model2Accuracy = 0
+    model3Accuracy = 0
     totalCount = 0
-    sensor_data_folder = f'{root_path}\\new test 20241031\\{gesture}\\'
+    sensor_data_folder = f'{root_path}\\old_test_horizontal\\{gesture}\\'
     for filename in os.listdir(sensor_data_folder):
         if filename.endswith('.csv') and not filename.endswith('_processed.csv'):
             totalCount += 1
@@ -97,16 +99,22 @@ for gesture in gestures:
             # Perform the prediction
             prediction1 = loaded_model1.predict(new_data)
             prediction2 = loaded_model2.predict(new_data)
+            prediction3 = loaded_model3.predict(new_data)
 
             # Get the predicted label
             predicted_label1 = np.argmax(prediction1)
             predicted_label2 = np.argmax(prediction2)
+            predicted_label3 = np.argmax(prediction3)
             
             print(f'Predicted Gesture with model 1: {gestures[predicted_label1]}')
             print(f'Predicted Gesture with model 2: {gestures[predicted_label2]}')
+            print(f'Predicted Gesture with model 3: {gestures[predicted_label3]}')
             if gesture == gestures[predicted_label1]:
                 model1Accuracy +=1
             if gesture == gestures[predicted_label2]:
                 model2Accuracy +=1
+            if gesture == gestures[predicted_label3]:
+                model3Accuracy +=1
     print(f'Model 1 accuracy for {gesture}: {model1Accuracy/totalCount}')
     print(f'Model 2 accuracy for {gesture}: {model2Accuracy/totalCount}')
+    print(f'Model 3 accuracy for {gesture}: {model3Accuracy/totalCount}')

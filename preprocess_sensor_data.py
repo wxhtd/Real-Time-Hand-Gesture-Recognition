@@ -55,6 +55,6 @@ types = [gesture.strip() for gesture in config["gestures"].split(",")]
 
 for type in types:
     # Define the folder containing the .csv files and the output file path
-    folder_path = f'\\{type}'
-    output_file = f'\\{type}_combined.csv'  # Output file name
+    folder_path = f'{root_path}\\{type}'
+    output_file = f'{root_path}\\{type}_combined.csv'  # Output file name
     preprocess_sensor_data(folder_path, output_file)

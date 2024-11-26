@@ -1,4 +1,4 @@
 {
-    "test_data_root_directory": "D:\\Repository\\CNN\\Processed Data",
+    "test_data_root_directory": "C:\\Users\\wxhtd\\OneDrive\\Desktop\\Study\\2024fall\\CS595\\3D-CNN\\Processed Data",
     "gestures": "thumbs_up, thumbs_down, palm_left, palm_right, palm_up, palm_down, palm_forward, palm_backward"
 }
