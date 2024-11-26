@@ -13,6 +13,15 @@ max_frames = 100  # Set a maximum frame length for padding
 num_zones = 64    # Number of zones per frame
 input_channels = 2  # Distance and signal channels
 
+# Load the data
+with open("config.json", "r") as config_file:
+    config = json.load(config_file)
+
+root_path = config["test_data_root_directory"]
+dynamic_gestures = [gesture.strip() for gesture in config["dynamic_gestures"].split(",")]
+all_gestures = [gesture.strip() for gesture in config["all_gestures"].split(",")]
+dynamic_gestures = all_gestures
+
 # Load Data Function
 def load_data(data_dir, gestures, max_frames=None):
     max_frames_found = 0  # Track max sequence length for dynamic gestures
@@ -24,7 +33,7 @@ def load_data(data_dir, gestures, max_frames=None):
 
     for label, gesture in enumerate(gestures):
         # Load CSV file for each gesture
-        file_path = os.path.join(data_dir, f"{gesture}_combined.csv")
+        file_path = os.path.join(data_dir, f"{gesture}_combined_bk.csv")
         data = pd.read_csv(file_path, header=None)
 
         # Group data by batch number (first column)
@@ -59,14 +68,6 @@ def load_data(data_dir, gestures, max_frames=None):
 
     y = np.array(y)
     return X, y, max_frames
-
-# Load the data
-with open(".\\3D-CNN(1)\\config.json", "r") as config_file:
-    config = json.load(config_file)
-
-root_path = config["test_data_root_directory"]
-dynamic_gestures = [gesture.strip() for gesture in config["dynamic_gestures"].split(",")]
-
 
 X_dynamic, y_dynamic, max_frames = load_data(root_path, dynamic_gestures)
 
@@ -122,11 +123,12 @@ for gesture_idx, gesture in enumerate(dynamic_gestures):
         print(f"Accuracy for {gesture}: {gesture_accuracy * 100:.2f}%")
 
 # Save the model for future use
-model_3d.save('gesture_3dcnn_normal_globalMaxPool_maskPadding_20epochs_with_signal_2.h5')
-print("Model saved as 'gesture_3dcnn_normal_globalMaxPool_maskPadding_20epochs_with_signal_2.h5'")
+model_name = 'gesture_3dcnn_20241126_f_4.h5'
+model_3d.save(model_name)
+print(f"Model saved as '{model_name}'")
 
 # Load the model and make predictions
-loaded_model_3d = load_model('gesture_3dcnn_normal_globalMaxPool_maskPadding_20epochs_with_signal_2.h5')
+loaded_model_3d = load_model(model_name)
 
 # Example prediction for dynamic gesture
 sample_dynamic = X_test_dyn[0].reshape(1, *X_test_dyn[0].shape)

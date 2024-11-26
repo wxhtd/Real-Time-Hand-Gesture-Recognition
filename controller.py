@@ -4,16 +4,21 @@ import threading
 import logging
 import json
 from collections import deque
-from evaluate import evaluate_gesture, evaluate_gesture_both
+from queue import PriorityQueue
+from evaluate import evaluate_gesture
 
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
 
 frame_number = int(config.get("prediction_frame_number", 10))
+background_distance_threshold = float(config.get("background_distance_threshold", 600))
+relative_background_distance  = float(config.get("relative_background_distance", 200))
 port = config["port"]
 
 # Configure logging
-logging.basicConfig(filename='output.log', level=logging.INFO, format='%(asctime)s - %(message)s')
+log_level = logging.getLevelName(config.get("log_level", "INFO"))
+# Configure logging
+logging.basicConfig(filename='output2.log', level=log_level, format='%(asctime)s - %(message)s')
 
 ser = None
 latest_data = None
@@ -40,7 +45,7 @@ def initialize_serial(port=port, baudrate=921600, retries=3, delay=2):
         except serial.SerialException as e:
             print(f"Connection attempt {attempt + 1} failed: {e}")
             time.sleep(delay)
-    raise serial.SerialException(f"Failed to open port {port} after {retries} attempts.")
+    #raise serial.SerialException(f"Failed to open port {port} after {retries} attempts.")
 
 # Function to send command to the board
 def send_command(command):
@@ -70,10 +75,9 @@ def read_from_serial():
             try:
                 data = ln.decode('utf-8').strip()
                 # Store the latest data for retrieval by GUI
-                logging.info(data)
+                logging.warning(data)
                 if "data:" in data:
-                    latest_data = data.split("data:", 1)[1]
-                    process_data(latest_data)  # Process and store data in buffer for gesture prediction
+                    process_data(data.split("data:", 1)[1])  # Process and store data in buffer for gesture prediction
             except UnicodeDecodeError:
                 # Fallback to binary handling if decoding fails
                 latest_data = ' '.join(f'{byte:02x}' for byte in ln)
@@ -100,23 +104,82 @@ def close_serial():
 def send_updated_settings(zone_mode, ranging_rate):
     pass
 
+def clear_buffer():
+    data_distance_buffer.clear()
+    data_signal_buffer.clear()
+
 # Function to process the data and store in buffer
 def process_data(data):
+    global latest_data
     zones = [3000]*64
     signals = [0]*64
+    cells_to_process = []
+    pqueue = PriorityQueue()
     for entry in data.split(";"):
         zone_data = entry.split(",")
         if len(zone_data) == 4:
             try:
                 zone_id = int(zone_data[0])
-                distance = int(zone_data[1]) if zone_data[1] != 'X' else 3000  # Set 'X' to 3000
-                signal = int(zone_data[3]) if zone_data[3] != 'X' else 0  # Set 'X' to 3000
-                zones[zone_id] = distance
-                signals[zone_id] = signal
+                if zone_data[1] == 'X':
+                    cells_to_process.append(zone_id)
+                else:
+                    if int(zone_data[1]) > background_distance_threshold:
+                        distance = 3000
+                        signal = 0
+                    else:
+                        distance = int(zone_data[1])
+                        signal = int(zone_data[3])
+                    pqueue.put(distance)
+                    zones[zone_id] = distance
+                    signals[zone_id] = signal
             except ValueError:
                 # Skip this entry if conversion fails
                 zones[zone_id] = 3000  # Default to 3000 for invalid entries
                 signals[zone_id] = 0  # Default to 0 for invalid entries
+    # for cell in cells_to_process:
+    #     neighbors = {cell-9,cell-8,cell-7,cell-1,cell+1,cell+7,cell+8,cell+9}
+    #     if cell %8 == 0:
+    #         neighbors -= {cell-1,cell-9,cell+7}
+    #     elif (cell - 7) %8 == 0:
+    #         neighbors -= {cell+1,cell-7,cell+9}
+    #     if cell/8 < 1:
+    #         neighbors -= {cell-7,cell-8,cell-9}
+    #     elif cell/8 >= 7:
+    #         neighbors -= {cell+7,cell+8,cell+9}
+    #     divider, distance, signal = 0,0,0
+    #     for n in neighbors:
+    #         if zones[n] != 3000:
+    #             divider += 1
+    #             distance += zones[n]
+    #             signal += signals[n]
+    #     if divider != 0:
+    #         distance /= divider
+    #         pqueue.put(distance)
+    #         signal /= divider
+    #         if round(distance) < background_distance_threshold:                
+    #             zones[cell] = round(distance)
+    #             signals[cell] = round(signal)
+    
+    closest_distance, closest_distance_count = 0, 0
+    # Remove elements based on priority
+    while not pqueue.empty():
+        dist = pqueue.get()
+        # logging.info(f"Get {dist} from priority queue")
+        closest_distance += dist
+        closest_distance_count += 1
+        if closest_distance_count == 5:
+            break
+    if closest_distance_count == 0:
+        distance_threshold = closest_distance
+    else:
+        distance_threshold = closest_distance / closest_distance_count + relative_background_distance
+    logging.info(f'Distance threshold = {distance_threshold}')
+    for i in range(64):
+        if zones[i] > distance_threshold:
+            zones[i] = 3000
+            signals[i] = 0
+    latest_data = zones, signals
+    logging.warning(zones+signals)
     if len(zones) == 64:
         data_distance_buffer.append(zones)  # Store only complete frames
         data_signal_buffer.append(signals)
