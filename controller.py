@@ -5,7 +5,7 @@ import logging
 import json
 from collections import deque
 from queue import PriorityQueue
-from evaluate import evaluate_gesture
+from evaluate import evaluate_gesture, evaluate_gesture_object
 
 with open("config.json", "r") as config_file:
     config = json.load(config_file)
@@ -25,6 +25,8 @@ latest_data = None
 reading = False
 data_distance_buffer = deque(maxlen=frame_number)  # Buffer to store the distance data of last frame
 data_signal_buffer = deque(maxlen=frame_number)  # Buffer to store the signal data of last frame
+data_distance_buffer2 = deque(maxlen=frame_number) # Buffer to store the object detection data of last frame
+latest_data2 = None
 
 # Initialize the serial connection
 def initialize_serial(port=port, baudrate=921600, retries=3, delay=2):
@@ -68,7 +70,7 @@ def stop_reading():
 
 # Function to handle serial data reading
 def read_from_serial():
-    global latest_data
+    global latest_data, latest_data2
     while reading and ser:
         if ser.in_waiting > 0:
             ln = ser.readline()
@@ -78,16 +80,17 @@ def read_from_serial():
                 logging.warning(data)
                 if "data:" in data:
                     process_data(data.split("data:", 1)[1])  # Process and store data in buffer for gesture prediction
+                    process_data2(data.split("data:", 1)[1])
             except UnicodeDecodeError:
                 # Fallback to binary handling if decoding fails
                 latest_data = ' '.join(f'{byte:02x}' for byte in ln)
+                latest_data2 = ' '.join(f'{byte:02x}' for byte in ln)
         time.sleep(0.1)  # Polling delay
 
 # Function to retrieve the latest data (to be called by GUI)
 def get_latest_data():
-    return latest_data
+    return latest_data, latest_data2
 
-# Function to handle keyboard input
 def keyboard_input():
     while True:
         command = input("Enter command (r/s/c) or 'q' to quit: ").strip()
@@ -136,29 +139,6 @@ def process_data(data):
                 # Skip this entry if conversion fails
                 zones[zone_id] = 3000  # Default to 3000 for invalid entries
                 signals[zone_id] = 0  # Default to 0 for invalid entries
-    # for cell in cells_to_process:
-    #     neighbors = {cell-9,cell-8,cell-7,cell-1,cell+1,cell+7,cell+8,cell+9}
-    #     if cell %8 == 0:
-    #         neighbors -= {cell-1,cell-9,cell+7}
-    #     elif (cell - 7) %8 == 0:
-    #         neighbors -= {cell+1,cell-7,cell+9}
-    #     if cell/8 < 1:
-    #         neighbors -= {cell-7,cell-8,cell-9}
-    #     elif cell/8 >= 7:
-    #         neighbors -= {cell+7,cell+8,cell+9}
-    #     divider, distance, signal = 0,0,0
-    #     for n in neighbors:
-    #         if zones[n] != 3000:
-    #             divider += 1
-    #             distance += zones[n]
-    #             signal += signals[n]
-    #     if divider != 0:
-    #         distance /= divider
-    #         pqueue.put(distance)
-    #         signal /= divider
-    #         if round(distance) < background_distance_threshold:                
-    #             zones[cell] = round(distance)
-    #             signals[cell] = round(signal)
     
     closest_distance, closest_distance_count = 0, 0
     # Remove elements based on priority
@@ -183,6 +163,64 @@ def process_data(data):
     if len(zones) == 64:
         data_distance_buffer.append(zones)  # Store only complete frames
         data_signal_buffer.append(signals)
+
+# Function to process the data and store in buffer
+def process_data2(data):
+    global latest_data2
+    zones = [0]*64
+    signals = [0]*64
+    cells_to_process = []
+    pqueue = PriorityQueue()
+    for entry in data.split(";"):
+        zone_data = entry.split(",")
+        if len(zone_data) == 4:
+            try:
+                zone_id = int(zone_data[0])
+                if zone_data[1] != 'X':
+                    if int(zone_data[1]) > background_distance_threshold:
+                        distance = 0
+                    else:
+                        distance = int(zone_data[1])
+                        pqueue.put(distance)
+                    zones[zone_id] = distance
+            except ValueError:
+                # Skip this entry if conversion fails
+                zones[zone_id] = 0  # Default to 3000 for invalid entries
+    
+    closest_distance, closest_distance_count = 0, 0
+    # Remove elements based on priority
+    while not pqueue.empty():
+        dist = pqueue.get()
+        # logging.info(f"Get {dist} from priority queue")
+        closest_distance += dist
+        closest_distance_count += 1
+        if closest_distance_count == 5:
+            break
+    if closest_distance_count == 0:
+        distance_threshold = closest_distance
+    else:
+        distance_threshold = closest_distance / closest_distance_count + relative_background_distance
+    logging.info(f'Distance threshold = {distance_threshold}')
+    for i in range(64):
+        if zones[i] > distance_threshold or zones[i] == 0:
+            zones[i] = 0
+        else:
+            zones[i] = 1
+    latest_data2 = zones, signals
+    logging.warning(zones+signals)
+    if len(zones) == 64:
+        data_distance_buffer2.append(zones)  # Store only complete frames
+
+def get_gesture_prediction2():
+    # Return the buffer as a list of lists, ensuring it has exactly 10 frames
+    prediction_matrix_distance = list(data_distance_buffer2)
+    # # If we have less than 10 frames, pad with 3000s for missing data
+    # while len(prediction_matrix) < frame_number:
+    #     prediction_matrix.insert(0, [3000] * 64)  # Pad with 3000 values
+    if len(prediction_matrix_distance) > 0:
+        return evaluate_gesture_object(prediction_matrix_distance)
+        # return evaluate_gesture_both(prediction_matrix, prediction_matrix_signal)
+    return '', []
 
 def get_gesture_prediction():
     # Return the buffer as a list of lists, ensuring it has exactly 10 frames

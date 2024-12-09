@@ -75,3 +75,44 @@ def evaluate_gesture(distances, signals):
     for i, prob in enumerate(prediction[0]):
         results.append([gestures[i], prob])
     return confirmed_result, results
+
+# Load new sensor data (replace with your actual file or data source)
+def load_data_object(distances):
+    # Reshape the data to (frames, 8, 8, 2)
+    zone_distances = distance_scaler.fit_transform(distances)  # Normalized to [0, 1]
+    zone_distances = zone_distances.reshape(len(zone_distances), 8, 8, 1)
+    frames = zone_distances[np.newaxis, ...]
+    return frames
+
+def evaluate_gesture_object(distances):
+    global test_id
+
+    test_id += 1
+    logging.warning(f'{test_id}:{distances}')
+
+    if len(distances) < frame_number:
+        logging.info(f'Less than {frame_number} frames, skip prediction')
+        return '', []
+    distances = np.array(distances)
+        
+    reshaped_data = load_data_object(distances)
+    model = load_model('gesture_3dcnn_obj_only_20241209_f_1.h5')
+
+    # Perform the prediction
+    prediction = model.predict(reshaped_data)
+    
+    # Get the predicted label for the frame
+    predicted_label = np.argmax(prediction)
+    confidence = prediction[0][predicted_label]
+    confirmed_result = ''
+    results = []
+    if confidence >= confidence_threshold:
+        confirmed_result = gestures[predicted_label]
+        logging.info(f'Predicted Gesture: {gestures[predicted_label]}')
+        logging.warning(f'{test_id} - result:{confirmed_result}')
+        if confirmed_result not in gestures_display:
+            confirmed_result = ''
+            logging.warning('Predicted Gesture will not be displayed')
+    for i, prob in enumerate(prediction[0]):
+        results.append([gestures[i], prob])
+    return confirmed_result, results

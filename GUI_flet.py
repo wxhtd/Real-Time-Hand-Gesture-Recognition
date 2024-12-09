@@ -26,8 +26,8 @@ controller.initialize_serial()
 def main(page: ft.Page):
     global last_prediction_time
     page.title = "Hand Gesture Recognition"
-    page.window_width = 800
-    page.window_height = 600
+    page.window_width = 1600
+    page.window_height = 1200
     page.theme_mode = "LIGHT"
 
     # Variables
@@ -130,7 +130,29 @@ def main(page: ft.Page):
         alignment="center"
     )
 
-    
+    gesture_image2 = ft.Image(
+        src="./src/idle.png",  # Initial placeholder image
+        width=150,            # Adjust size as needed
+        height=150,
+        fit="contain"
+    )
+
+    gesture_label2 = ft.Text(
+        value="Gesture: None",
+        size=16,
+        color="#333333"
+    )
+
+    countdown_label2 = ft.Text("", size=24, color="red")
+
+    gesture_display_container2 = ft.Column(
+        [
+            ft.Text("Hand Gesture:", size=18, color="#000000"),
+            gesture_image2,
+            gesture_label2,
+        ],
+        alignment="center"
+    )
     
     # UI Components
     def create_zone_grid():
@@ -156,7 +178,8 @@ def main(page: ft.Page):
     
         # Update zone display function
     async def update_zone_data():
-        data = controller.get_latest_data()
+        data, data2 = controller.get_latest_data()
+        logging.error(f'data:{data} | data2:{data2}')
         if data:
             try:
                 zone_data, signal_data = data
@@ -164,7 +187,7 @@ def main(page: ft.Page):
                     if distance == -1:
                         color = "#FFFFFF"  # White for missing data
                     else:
-                        norm_distance = min(max(distance / 3000, 0), 1)  # Normalize distance to [0, 1]
+                        norm_distance = min(max(distance / 5000, 0), 1)  # Normalize distance to [0, 1]
                         hue = norm_distance * 240 / 360  # Map distance to hue range [0, 2/3]
                         # Adjust brightness (value): darker for mid-range
                         brightness = 0.7 if 0.3 <= norm_distance <= 0.7 else 1.0
@@ -174,7 +197,18 @@ def main(page: ft.Page):
                     row, col = divmod(zone_id, 8)
                     zone_grid.controls[row*8+col].bgcolor = color
                     zone_grid.controls[row*8+col].content.value = f"R:{distance}"
+
+                zone_data2, signal_data2 = data2
+                for zone_id, distance in enumerate(zone_data2):
+                    if distance == 1:
+                        color = "#FF0000" # red for 1
+                    else:
+                        color = "#FFFFFF"  # White for 0
+                    row, col = divmod(zone_id, 8)
+                    zone_grid2.controls[row*8+col].bgcolor = color
+                    zone_grid2.controls[row*8+col].content.value = f"R:{distance}"
                 zone_grid.update()
+                zone_grid2.update()
             except Exception as e:
                 print(f"Error updating zone data: {e}")
 
@@ -183,6 +217,7 @@ def main(page: ft.Page):
         logging.info('try update gesture')
         if gesture_name == None:
             gesture_name, probabilities = controller.get_gesture_prediction()
+            gesture_name2, probabilities2 = controller.get_gesture_prediction2()
         if gesture_name:
             logging.warning(f'updating gesture: {gesture_name}')
             gesture_image.src = f"./src/{gesture_name}.png"
@@ -204,6 +239,31 @@ def main(page: ft.Page):
             gesture_label.value = "Gesture: None"
             gesture_image.update()
             gesture_label.update()
+            page.update()
+            logging.info('clear buffer')
+            controller.clear_buffer()
+        
+        if gesture_name2:
+            logging.warning(f'updating gesture: {gesture_name2}')
+            gesture_image2.src = f"./src/{gesture_name2}.png"
+            gesture_label2.value = f"Gesture: {gesture_name2}"
+            gesture_image2.update()
+            gesture_label2.update()
+            page.update()
+            # Start a 3-second countdown
+            for i in range(prediction_delay, 0, -1):
+                countdown_label2.value = f"Resume detection in {i}"
+                page.update()
+                time.sleep(1)  # Wait 1 second
+            # Clear the countdown and gesture label
+            logging.info('finish counting down')
+            countdown_label2.value = ""
+            gesture_label2.value = "Gesture: None"
+        # else:
+            gesture_image2.src = "./src/idle.png"
+            gesture_label2.value = "Gesture: None"
+            gesture_image2.update()
+            gesture_label2.update()
             page.update()
             logging.info('clear buffer')
             controller.clear_buffer()
@@ -249,6 +309,9 @@ def main(page: ft.Page):
     # Layout and Components
     zone_grid = create_zone_grid()    
     
+    # Layout and Components
+    zone_grid2 = create_zone_grid()
+
     layout = ft.Row(
         controls=[
             # Left Side: Zone Grid
@@ -274,6 +337,29 @@ def main(page: ft.Page):
                     ft.ElevatedButton("Stop", on_click=stop_sampling),
                     ft.Divider(),
                     gesture_display_container,
+                ],
+                expand=False,
+                spacing=10,
+            ),
+            # Left Side: Zone Grid
+            ft.Container(
+                content=zone_grid2,
+                padding=10,
+                expand=True,
+            ),
+            
+            # Right Side: Control Panel
+            ft.Column(
+                controls=[
+                    ft.Dropdown(
+                        label="Zone Mode",
+                        value="8x8",
+                        options=[
+                            ft.dropdown.Option("4x4"),
+                            ft.dropdown.Option("8x8"),
+                        ],
+                    ),
+                    gesture_display_container2,
                 ],
                 expand=False,
                 spacing=10,
